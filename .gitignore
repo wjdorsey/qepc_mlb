@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# OS junk
+.DS_Store
+
+# Logs and generated outputs
+logs/
+artifacts/
+
+# Large/raw/processed data
+cache/
+
+# Large data/model artifacts anywhere
+*.csv
+*.parquet
+*.zip
+*.joblib
+*.pkl
+*.pickle
+
+# Keep folder placeholders if we add them later
+!.gitkeep
