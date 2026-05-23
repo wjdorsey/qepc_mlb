@@ -9,7 +9,7 @@ Champion ranker:
     HistGradientBoostingClassifier(
         max_iter=250,
         learning_rate=0.05,
-        max_leaf_nodes=31,
+        max_leaf_nodes=15,
         l2_regularization=0.0
     )
 
@@ -44,7 +44,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 
-SAFETY_VERSION = "batter_1plus_hit_ranker_champion_train_v1_pregame_safe_hgb_lr005_leaf31"
+SAFETY_VERSION = "batter_1plus_hit_ranker_champion_train_v2_opp_starter_context_hgb_lr005_leaf15_l2001"
 TARGET_COL = "hit_1plus"
 
 SAME_GAME_OUTCOME_FEATURES = sorted({
@@ -147,6 +147,61 @@ NUMERIC_FEATURE_CANDIDATES = [
     "is_starting_lineup_by_batting_file",
     "is_starting_lineup_teamstats",
     "is_starter",
+    "has_opp_starter_context",
+    "opp_starter_games_prior",
+    "opp_starter_days_rest",
+    "opp_starter_strikeouts_lag1",
+    "opp_starter_strikeouts_roll3",
+    "opp_starter_strikeouts_roll5",
+    "opp_starter_strikeouts_roll10",
+    "opp_starter_batters_faced_lag1",
+    "opp_starter_batters_faced_roll3",
+    "opp_starter_batters_faced_roll5",
+    "opp_starter_batters_faced_roll10",
+    "opp_starter_hits_allowed_lag1",
+    "opp_starter_hits_allowed_roll3",
+    "opp_starter_hits_allowed_roll5",
+    "opp_starter_hits_allowed_roll10",
+    "opp_starter_walks_allowed_lag1",
+    "opp_starter_walks_allowed_roll3",
+    "opp_starter_walks_allowed_roll5",
+    "opp_starter_walks_allowed_roll10",
+    "opp_starter_runs_allowed_lag1",
+    "opp_starter_runs_allowed_roll3",
+    "opp_starter_runs_allowed_roll5",
+    "opp_starter_runs_allowed_roll10",
+    "opp_starter_home_runs_allowed_lag1",
+    "opp_starter_home_runs_allowed_roll3",
+    "opp_starter_home_runs_allowed_roll5",
+    "opp_starter_home_runs_allowed_roll10",
+    "opp_starter_outs_recorded_lag1",
+    "opp_starter_outs_recorded_roll3",
+    "opp_starter_outs_recorded_roll5",
+    "opp_starter_outs_recorded_roll10",
+    "opp_starter_innings_pitched_lag1",
+    "opp_starter_innings_pitched_roll3",
+    "opp_starter_innings_pitched_roll5",
+    "opp_starter_innings_pitched_roll10",
+    "opp_starter_k_per_bf_lag1",
+    "opp_starter_k_per_bf_roll3",
+    "opp_starter_k_per_bf_roll5",
+    "opp_starter_k_per_bf_roll10",
+    "opp_starter_hits_per_bf_lag1",
+    "opp_starter_hits_per_bf_roll3",
+    "opp_starter_hits_per_bf_roll5",
+    "opp_starter_hits_per_bf_roll10",
+    "opp_starter_bb_per_bf_lag1",
+    "opp_starter_bb_per_bf_roll3",
+    "opp_starter_bb_per_bf_roll5",
+    "opp_starter_bb_per_bf_roll10",
+    "opp_starter_hr_per_bf_lag1",
+    "opp_starter_hr_per_bf_roll3",
+    "opp_starter_hr_per_bf_roll5",
+    "opp_starter_hr_per_bf_roll10",
+    "opp_starter_er_per_ip_lag1",
+    "opp_starter_er_per_ip_roll3",
+    "opp_starter_er_per_ip_roll5",
+    "opp_starter_er_per_ip_roll10",
 ]
 
 CATEGORICAL_FEATURE_CANDIDATES = [
@@ -157,13 +212,14 @@ CATEGORICAL_FEATURE_CANDIDATES = [
     "env_winddir",
     "env_daynight",
     "env_usedh",
+    "opp_starter_throw",
 ]
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train QEPC-MLB Batter 1+ Hit Ranker Champion")
     p.add_argument("--input", required=True, help="Path to batter_game_logs parquet/csv")
-    p.add_argument("--out_dir", default="artifacts/mlb/models/batter_1plus_hit_ranker_champion")
+    p.add_argument("--out_dir", default="artifacts/mlb/models/batter_1plus_hit_ranker_champion_v2")
     p.add_argument("--min_season", type=int, default=2022)
     p.add_argument("--max_season", type=int, default=2025)
     p.add_argument("--starters_only", action="store_true")
@@ -355,8 +411,8 @@ def make_pipeline(numeric_features: List[str], categorical_features: List[str], 
     clf = HistGradientBoostingClassifier(
         max_iter=250,
         learning_rate=0.05,
-        max_leaf_nodes=31,
-        l2_regularization=0.0,
+        max_leaf_nodes=15,
+        l2_regularization=0.01,
         random_state=random_state,
     )
 
@@ -549,8 +605,8 @@ def main() -> None:
             "model": "HistGradientBoostingClassifier",
             "max_iter": 250,
             "learning_rate": 0.05,
-            "max_leaf_nodes": 31,
-            "l2_regularization": 0.0,
+            "max_leaf_nodes": 15,
+            "l2_regularization": 0.01,
             "random_state": args.random_state,
         },
         "numeric_feature_count": int(len(numeric_features)),

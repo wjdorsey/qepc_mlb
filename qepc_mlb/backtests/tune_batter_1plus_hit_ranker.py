@@ -19,7 +19,7 @@ Example:
       --starters_only \
       --confirmed_lineups \
       --min_games 20 \
-      --grid fast
+      --grid hgb_focus
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ try:
 except Exception:  # pragma: no cover
     tqdm = None
 
-SAFETY_VERSION = "batter_1plus_hit_ranker_v1_pregame_safe"
+SAFETY_VERSION = "batter_1plus_hit_ranker_v2_hgb_focus"
 TARGET = "hit_1plus"
 
 # Same-game outcomes / diagnostics that must never be model features.
@@ -350,7 +350,34 @@ def get_model_configs(grid: str, models: Optional[List[str]], random_state: int,
     def allow(name: str) -> bool:
         return not models or name in models
 
-    if grid == "fast":
+    if grid == "hgb_focus":
+        # Focused grid around the first-pass winners:
+        # - hgb_lr05_leaf31_l2 won top-10 daily hit rate
+        # - hgb_lr05_leaf15_l2 won Brier/log-loss
+        if allow("hgb"):
+            for lr, iters in [(0.04, 320), (0.05, 280), (0.06, 240)]:
+                for leaf in [15, 23, 31, 47]:
+                    for l2 in [0.0, 0.005, 0.01, 0.025]:
+                        configs.append(ModelConfig(
+                            f"hgb_lr{str(lr).replace('.', '')}_leaf{leaf}_l2{str(l2).replace('.', '')}",
+                            HistGradientBoostingClassifier(
+                                max_iter=iters,
+                                learning_rate=lr,
+                                max_leaf_nodes=leaf,
+                                l2_regularization=l2,
+                                random_state=random_state,
+                            ),
+                        ))
+        # Optional comparison configs if requested.
+        if allow("rf"):
+            configs += [
+                ModelConfig("rf_500_leaf16", RandomForestClassifier(n_estimators=500, min_samples_leaf=16, max_depth=14, max_features=1.0, bootstrap=True, random_state=random_state, n_jobs=n_jobs)),
+            ]
+        if allow("extra_trees"):
+            configs += [
+                ModelConfig("extra_trees_400_leaf10", ExtraTreesClassifier(n_estimators=400, min_samples_leaf=10, max_depth=None, max_features=1.0, random_state=random_state, n_jobs=n_jobs)),
+            ]
+    elif grid == "fast":
         if allow("hgb"):
             configs += [
                 ModelConfig("hgb_lr05_leaf31_l2", HistGradientBoostingClassifier(max_iter=250, learning_rate=0.05, max_leaf_nodes=31, l2_regularization=0.0, random_state=random_state)),
@@ -567,7 +594,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--confirmed_lineups", action="store_true", help="Allow confirmed lineup features such as lineup_slot/starter flag.")
     p.add_argument("--min_games", type=int, default=20)
     p.add_argument("--require_env_rows", action="store_true")
-    p.add_argument("--grid", choices=["fast", "wide"], default="fast")
+    p.add_argument("--grid", choices=["fast", "wide", "hgb_focus"], default="fast")
     p.add_argument("--models", nargs="*", default=None, choices=["rf", "hgb", "extra_trees", "logreg"])
     p.add_argument("--period", default="M", help="Pandas period alias; M=monthly.")
     p.add_argument("--min_train_rows", type=int, default=5000)

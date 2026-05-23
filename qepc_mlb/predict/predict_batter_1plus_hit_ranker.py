@@ -110,21 +110,30 @@ def add_starter_alias(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def prepare_x(df: pd.DataFrame, numeric_features: Sequence[str], categorical_features: Sequence[str]) -> pd.DataFrame:
-    x = pd.DataFrame(index=df.index)
+    numeric_data = {}
+    categorical_data = {}
 
     for c in numeric_features:
         if c in df.columns:
-            x[c] = pd.to_numeric(df[c], errors="coerce")
+            numeric_data[c] = pd.to_numeric(df[c], errors="coerce")
         else:
-            x[c] = np.nan
+            numeric_data[c] = pd.Series(np.nan, index=df.index)
 
     for c in categorical_features:
         if c in df.columns:
-            x[c] = df[c].astype("string").fillna("__MISSING__")
+            categorical_data[c] = df[c].astype("string").fillna("__MISSING__")
         else:
-            x[c] = "__MISSING__"
+            categorical_data[c] = pd.Series("__MISSING__", index=df.index, dtype="string")
 
-    return x[list(numeric_features) + list(categorical_features)]
+    x = pd.concat(
+        [
+            pd.DataFrame(numeric_data, index=df.index),
+            pd.DataFrame(categorical_data, index=df.index),
+        ],
+        axis=1,
+    )
+
+    return x[list(numeric_features) + list(categorical_features)].copy()
 
 
 def output_columns(df: pd.DataFrame) -> List[str]:
