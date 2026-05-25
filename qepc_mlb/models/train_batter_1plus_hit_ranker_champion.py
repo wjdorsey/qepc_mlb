@@ -7,7 +7,7 @@ Target:
 
 Champion ranker:
     HistGradientBoostingClassifier(
-        max_iter=250,
+        max_iter=280,
         learning_rate=0.05,
         max_leaf_nodes=15,
         l2_regularization=0.0
@@ -44,7 +44,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 
-SAFETY_VERSION = "batter_1plus_hit_ranker_champion_train_v2_opp_starter_context_hgb_lr005_leaf15_l2001"
+SAFETY_VERSION = "batter_1plus_hit_ranker_champion_train_v3_matchup_context_hgb_lr005_leaf15_l20005"
 TARGET_COL = "hit_1plus"
 
 SAME_GAME_OUTCOME_FEATURES = sorted({
@@ -202,6 +202,15 @@ NUMERIC_FEATURE_CANDIDATES = [
     "opp_starter_er_per_ip_roll3",
     "opp_starter_er_per_ip_roll5",
     "opp_starter_er_per_ip_roll10",
+    "batter_bats_right",
+    "batter_bats_left",
+    "batter_bats_switch",
+    "opp_starter_throws_right",
+    "opp_starter_throws_left",
+    "matchup_known",
+    "same_hand_matchup",
+    "opposite_hand_matchup",
+    "platoon_advantage",
 ]
 
 CATEGORICAL_FEATURE_CANDIDATES = [
@@ -213,13 +222,16 @@ CATEGORICAL_FEATURE_CANDIDATES = [
     "env_daynight",
     "env_usedh",
     "opp_starter_throw",
+    "batter_hand_norm",
+    "opp_starter_throw_norm",
+    "batter_pitcher_matchup_code",
 ]
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train QEPC-MLB Batter 1+ Hit Ranker Champion")
     p.add_argument("--input", required=True, help="Path to batter_game_logs parquet/csv")
-    p.add_argument("--out_dir", default="artifacts/mlb/models/batter_1plus_hit_ranker_champion_v2")
+    p.add_argument("--out_dir", default="artifacts/mlb/models/batter_1plus_hit_ranker_champion_v3")
     p.add_argument("--min_season", type=int, default=2022)
     p.add_argument("--max_season", type=int, default=2025)
     p.add_argument("--starters_only", action="store_true")
@@ -409,10 +421,10 @@ def make_pipeline(numeric_features: List[str], categorical_features: List[str], 
     )
 
     clf = HistGradientBoostingClassifier(
-        max_iter=250,
+        max_iter=280,
         learning_rate=0.05,
         max_leaf_nodes=15,
-        l2_regularization=0.01,
+        l2_regularization=0.005,
         random_state=random_state,
     )
 
@@ -603,10 +615,10 @@ def main() -> None:
         "target_rate": float(df_model[TARGET_COL].mean()),
         "champion_config": {
             "model": "HistGradientBoostingClassifier",
-            "max_iter": 250,
+            "max_iter": 280,
             "learning_rate": 0.05,
             "max_leaf_nodes": 15,
-            "l2_regularization": 0.01,
+            "l2_regularization": 0.005,
             "random_state": args.random_state,
         },
         "numeric_feature_count": int(len(numeric_features)),

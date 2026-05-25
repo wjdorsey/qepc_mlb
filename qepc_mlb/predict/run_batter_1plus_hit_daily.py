@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--allplayers", default="cache/mlb/raw/retrosheet/allplayers.csv")
     p.add_argument("--history", default="cache/mlb/processed/batter_game_logs_opp_pitcher.parquet")
     p.add_argument("--pitchers", default="cache/mlb/processed/pitcher_game_logs.parquet")
-    p.add_argument("--model_dir", default="artifacts/mlb/models/batter_1plus_hit_ranker_champion_v2")
+    p.add_argument("--model_dir", default="artifacts/mlb/models/batter_1plus_hit_ranker_champion_v3")
 
     p.add_argument("--manual_dir", default="cache/mlb/manual")
     p.add_argument("--scoring_dir", default="cache/mlb/scoring")

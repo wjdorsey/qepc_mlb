@@ -134,6 +134,25 @@ BASE_CATEGORICAL_FEATURES = [
     "home_away",
 ] + ENV_CATEGORICAL_FEATURES
 
+# Pregame-safe batter-vs-opposing-starter handedness matchup features.
+MATCHUP_NUMERIC_FEATURES = [
+    "batter_bats_right",
+    "batter_bats_left",
+    "batter_bats_switch",
+    "opp_starter_throws_right",
+    "opp_starter_throws_left",
+    "matchup_known",
+    "same_hand_matchup",
+    "opposite_hand_matchup",
+    "platoon_advantage",
+]
+
+MATCHUP_CATEGORICAL_FEATURES = [
+    "batter_hand_norm",
+    "opp_starter_throw_norm",
+    "batter_pitcher_matchup_code",
+]
+
 
 def read_table(path: str | Path) -> pd.DataFrame:
     path = Path(path)
@@ -273,7 +292,7 @@ def infer_features(df: pd.DataFrame, confirmed_lineups: bool) -> Tuple[List[str]
             rolling_features.append(c)
 
     numeric = []
-    for c in BASE_NUMERIC_FEATURES + rolling_features:
+    for c in BASE_NUMERIC_FEATURES + rolling_features + MATCHUP_NUMERIC_FEATURES:
         if c in cols and c not in EXCLUDED_SAME_GAME_OUTCOME_FEATURES:
             numeric.append(c)
 
@@ -295,7 +314,7 @@ def infer_features(df: pd.DataFrame, confirmed_lineups: bool) -> Tuple[List[str]
         if pd.api.types.is_bool_dtype(df[c]) or pd.to_numeric(df[c], errors="coerce").notna().any():
             valid_numeric.append(c)
 
-    categorical = [c for c in BASE_CATEGORICAL_FEATURES if c in cols and c not in EXCLUDED_SAME_GAME_OUTCOME_FEATURES]
+    categorical = [c for c in BASE_CATEGORICAL_FEATURES + MATCHUP_CATEGORICAL_FEATURES if c in cols and c not in EXCLUDED_SAME_GAME_OUTCOME_FEATURES]
     # Avoid duplicate columns across transformers.
     categorical = [c for c in categorical if c not in valid_numeric]
 
@@ -303,6 +322,10 @@ def infer_features(df: pd.DataFrame, confirmed_lineups: bool) -> Tuple[List[str]
         "hitter_recent_form": [c for c in valid_numeric if any(tok in c.lower() for tok in ["lag", "roll", "season_prior", "games_prior", "days_rest"])],
         "environment": [c for c in valid_numeric + categorical if c.startswith("env_") or c in {"is_home", "has_env_context"}],
         "confirmed_lineup": [c for c in valid_numeric if c in LINEUP_FEATURES],
+        "handedness_matchup": [
+            c for c in valid_numeric + categorical
+            if c in set(MATCHUP_NUMERIC_FEATURES + MATCHUP_CATEGORICAL_FEATURES)
+        ],
         "categorical": categorical,
     }
     return valid_numeric, categorical, meta

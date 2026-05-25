@@ -377,6 +377,62 @@ def add_pitcher_features(
     return out
 
 
+
+def normalize_hand(x: Any) -> str:
+    if pd.isna(x):
+        return "U"
+
+    s = str(x).strip().upper()
+
+    if s in {"R", "RIGHT", "RIGHTY"}:
+        return "R"
+    if s in {"L", "LEFT", "LEFTY"}:
+        return "L"
+    if s in {"S", "B", "SW", "SWITCH", "BOTH"}:
+        return "S"
+
+    return "U"
+
+
+def add_matchup_features_to_record(rec: Dict[str, Any]) -> Dict[str, Any]:
+    batter_hand = normalize_hand(rec.get("batter_hand"))
+    pitcher_throw = normalize_hand(rec.get("opp_starter_throw"))
+
+    rec["batter_hand_norm"] = batter_hand
+    rec["opp_starter_throw_norm"] = pitcher_throw
+
+    rec["batter_bats_right"] = int(batter_hand == "R")
+    rec["batter_bats_left"] = int(batter_hand == "L")
+    rec["batter_bats_switch"] = int(batter_hand == "S")
+
+    rec["opp_starter_throws_right"] = int(pitcher_throw == "R")
+    rec["opp_starter_throws_left"] = int(pitcher_throw == "L")
+
+    known_batter = batter_hand in {"R", "L", "S"}
+    known_pitcher = pitcher_throw in {"R", "L"}
+    known_matchup = known_batter and known_pitcher
+
+    same_hand = (
+        (batter_hand == "R" and pitcher_throw == "R")
+        or (batter_hand == "L" and pitcher_throw == "L")
+    )
+
+    opposite_hand = (
+        (batter_hand == "R" and pitcher_throw == "L")
+        or (batter_hand == "L" and pitcher_throw == "R")
+    )
+
+    platoon_advantage = opposite_hand or (batter_hand == "S" and known_pitcher)
+
+    rec["matchup_known"] = int(known_matchup)
+    rec["same_hand_matchup"] = int(same_hand) if known_matchup else np.nan
+    rec["opposite_hand_matchup"] = int(opposite_hand) if known_matchup else np.nan
+    rec["platoon_advantage"] = int(platoon_advantage) if known_matchup else np.nan
+    rec["batter_pitcher_matchup_code"] = f"{batter_hand}_vs_{pitcher_throw}"
+
+    return rec
+
+
 def main() -> None:
     args = parse_args()
 
@@ -464,6 +520,7 @@ def main() -> None:
         else:
             rec["has_opp_starter_context"] = False
 
+        rec = add_matchup_features_to_record(rec)
         rows.append(rec)
 
     slate = pd.DataFrame(rows)
