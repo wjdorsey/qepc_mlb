@@ -388,7 +388,21 @@ def get_model_configs(grid: str, models: Optional[List[str]], random_state: int,
     def allow(name: str) -> bool:
         return not models or name in models
 
-    if grid == "hgb_focus":
+    if grid == "scout":
+        # Ultra-fast single-config scout around current Batter 1+ Hit Ranker v3 champion.
+        # Use this to test whether a new feature family has signal before running bigger grids.
+        if allow("hgb"):
+            configs.append(ModelConfig(
+                "hgb_v3_scout_lr005_leaf15_l20005",
+                HistGradientBoostingClassifier(
+                    max_iter=280,
+                    learning_rate=0.05,
+                    max_leaf_nodes=15,
+                    l2_regularization=0.005,
+                    random_state=random_state,
+                ),
+            ))
+    elif grid == "hgb_focus":
         # Focused grid around the first-pass winners:
         # - hgb_lr05_leaf31_l2 won top-10 daily hit rate
         # - hgb_lr05_leaf15_l2 won Brier/log-loss
@@ -582,6 +596,7 @@ def walk_forward_for_config(
         pm = safe_metrics(y_test.to_numpy(), prob)
         pred = pd.DataFrame({
             "model": config.key,
+            "game_id": test.get("game_id", test.get("gid", pd.Series(index=test.index, dtype="object"))).values,
             "game_date": test["game_date"].values,
             "season": test["season"].values,
             "batter_id": test.get("batter_id", pd.Series(index=test.index, dtype="object")).values,
@@ -632,7 +647,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--confirmed_lineups", action="store_true", help="Allow confirmed lineup features such as lineup_slot/starter flag.")
     p.add_argument("--min_games", type=int, default=20)
     p.add_argument("--require_env_rows", action="store_true")
-    p.add_argument("--grid", choices=["fast", "wide", "hgb_focus"], default="fast")
+    p.add_argument("--grid", choices=["scout", "fast", "wide", "hgb_focus"], default="fast")
     p.add_argument("--models", nargs="*", default=None, choices=["rf", "hgb", "extra_trees", "logreg"])
     p.add_argument("--period", default="M", help="Pandas period alias; M=monthly.")
     p.add_argument("--min_train_rows", type=int, default=5000)
