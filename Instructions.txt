@@ -1,0 +1,9 @@
+python qepc_mlb/predict/run_batter_1plus_hit_daily.py \
+  --date YYYY-MM-DD \
+  --top_n 25
+
+
+Historical run: 
+python qepc_mlb/predict/run_batter_1plus_hit_daily.py \
+  --date 2025-09-28 \
+  --top_n 25

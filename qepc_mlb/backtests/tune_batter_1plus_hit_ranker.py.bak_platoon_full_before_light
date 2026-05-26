@@ -156,12 +156,42 @@ MATCHUP_CATEGORICAL_FEATURES = [
 
 # Pregame-safe prior batter performance splits vs RHP/LHP.
 PLATOON_NUMERIC_FEATURES = [
+    "batter_games_prior_vs_rhp",
+    "batter_hit_1plus_rate_prior_vs_rhp",
+    "batter_ba_prior_vs_rhp",
+    "batter_k_rate_prior_vs_rhp",
+    "batter_bb_rate_prior_vs_rhp",
+    "batter_tb_per_ab_prior_vs_rhp",
+    "batter_games_prior_vs_lhp",
+    "batter_hit_1plus_rate_prior_vs_lhp",
+    "batter_ba_prior_vs_lhp",
+    "batter_k_rate_prior_vs_lhp",
+    "batter_bb_rate_prior_vs_lhp",
+    "batter_tb_per_ab_prior_vs_lhp",
+    "batter_games_season_prior_vs_rhp",
+    "batter_hit_1plus_rate_season_prior_vs_rhp",
+    "batter_ba_season_prior_vs_rhp",
+    "batter_k_rate_season_prior_vs_rhp",
+    "batter_bb_rate_season_prior_vs_rhp",
+    "batter_tb_per_ab_season_prior_vs_rhp",
+    "batter_games_season_prior_vs_lhp",
+    "batter_hit_1plus_rate_season_prior_vs_lhp",
+    "batter_ba_season_prior_vs_lhp",
+    "batter_k_rate_season_prior_vs_lhp",
+    "batter_bb_rate_season_prior_vs_lhp",
+    "batter_tb_per_ab_season_prior_vs_lhp",
     "batter_games_prior_vs_pitcher_hand",
     "batter_hit_1plus_rate_prior_vs_pitcher_hand",
     "batter_ba_prior_vs_pitcher_hand",
     "batter_k_rate_prior_vs_pitcher_hand",
     "batter_bb_rate_prior_vs_pitcher_hand",
     "batter_tb_per_ab_prior_vs_pitcher_hand",
+    "batter_games_season_prior_vs_pitcher_hand",
+    "batter_hit_1plus_rate_season_prior_vs_pitcher_hand",
+    "batter_ba_season_prior_vs_pitcher_hand",
+    "batter_k_rate_season_prior_vs_pitcher_hand",
+    "batter_bb_rate_season_prior_vs_pitcher_hand",
+    "batter_tb_per_ab_season_prior_vs_pitcher_hand",
 ]
 
 
@@ -291,7 +321,7 @@ def filter_rows(
     return out, meta
 
 
-def infer_features(df: pd.DataFrame, confirmed_lineups: bool, include_platoon_splits: bool = False) -> Tuple[List[str], List[str], Dict[str, List[str]]]:
+def infer_features(df: pd.DataFrame, confirmed_lineups: bool) -> Tuple[List[str], List[str], Dict[str, List[str]]]:
     cols = set(df.columns)
 
     rolling_features = []
@@ -303,7 +333,7 @@ def infer_features(df: pd.DataFrame, confirmed_lineups: bool, include_platoon_sp
             rolling_features.append(c)
 
     numeric = []
-    for c in BASE_NUMERIC_FEATURES + rolling_features + MATCHUP_NUMERIC_FEATURES + (PLATOON_NUMERIC_FEATURES if include_platoon_splits else []):
+    for c in BASE_NUMERIC_FEATURES + rolling_features + MATCHUP_NUMERIC_FEATURES + PLATOON_NUMERIC_FEATURES:
         if c in cols and c not in EXCLUDED_SAME_GAME_OUTCOME_FEATURES:
             numeric.append(c)
 
@@ -339,7 +369,7 @@ def infer_features(df: pd.DataFrame, confirmed_lineups: bool, include_platoon_sp
         ],
         "platoon_splits": [
             c for c in valid_numeric
-            if include_platoon_splits and c in set(PLATOON_NUMERIC_FEATURES)
+            if c in set(PLATOON_NUMERIC_FEATURES)
         ],
         "categorical": categorical,
     }
@@ -639,7 +669,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--random_state", type=int, default=42)
     p.add_argument("--n_jobs", type=int, default=-1)
     p.add_argument("--save_predictions", action="store_true")
-    p.add_argument("--include_platoon_splits", action="store_true", help="Include experimental batter vs pitcher-hand platoon split features.")
     p.add_argument("--no_progress", action="store_true")
     return p.parse_args()
 
@@ -660,7 +689,7 @@ def main() -> None:
         require_env_rows=args.require_env_rows,
     )
 
-    numeric_features, categorical_features, feature_meta = infer_features(df, confirmed_lineups=args.confirmed_lineups, include_platoon_splits=args.include_platoon_splits)
+    numeric_features, categorical_features, feature_meta = infer_features(df, confirmed_lineups=args.confirmed_lineups)
     if not numeric_features and not categorical_features:
         raise ValueError("No usable features found.")
 
