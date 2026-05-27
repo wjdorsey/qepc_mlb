@@ -36,7 +36,7 @@ except Exception:
     tqdm = None
 
 
-SAFETY_VERSION = "batter_1plus_hit_daily_blend_v1_80v3_20savant"
+SAFETY_VERSION = "batter_1plus_hit_daily_blend_v4_1_80v3_20savant_v3top5protect"
 
 
 def parse_args() -> argparse.Namespace:
@@ -283,7 +283,27 @@ def main() -> None:
 
     score_df["v3_prob"] = predict_model(score_df, v3_model_dir)
     score_df["savant_prob"] = predict_model(score_df, sav_model_dir)
-    score_df["blend_prob"] = (args.v3_weight * score_df["v3_prob"]) + (args.savant_weight * score_df["savant_prob"])
+
+    # Base production blend.
+    score_df["blend_prob_base_80_20"] = (
+        args.v3_weight * score_df["v3_prob"]
+        + args.savant_weight * score_df["savant_prob"]
+    )
+
+    # QEPC v4.1 top-5 protection gate:
+    # If v3 already ranks a player top-5 on the daily slate, keep the final score
+    # slightly more v3-heavy. This improved top-5 hit rate while preserving top-10/top-25.
+    score_df["v3_rank_daily"] = score_df.groupby("game_date")["v3_prob"].rank(
+        method="first",
+        ascending=False,
+    )
+
+    score_df["blend_prob"] = score_df["blend_prob_base_80_20"]
+    top5_mask = score_df["v3_rank_daily"] <= 5
+    score_df.loc[top5_mask, "blend_prob"] = (
+        0.90 * score_df.loc[top5_mask, "v3_prob"]
+        + 0.10 * score_df.loc[top5_mask, "savant_prob"]
+    )
 
     score_df["pred_prob_pct"] = (score_df["blend_prob"] * 100).round(1)
 
@@ -313,6 +333,8 @@ def main() -> None:
         "pred_prob_pct",
         "v3_prob",
         "savant_prob",
+        "blend_prob_base_80_20",
+        "v3_rank_daily",
         "blend_prob",
     ]
 
@@ -339,6 +361,8 @@ def main() -> None:
         "savant_model_dir": args.savant_model_dir,
         "v3_weight": args.v3_weight,
         "savant_weight": args.savant_weight,
+        "gate": "v3_top5_protect",
+        "gate_rule": "if v3_rank_daily <= 5, use 90% v3 + 10% Savant; otherwise use configured base blend",
         "lineup_csv": str(lineup_csv),
         "slate_v3": str(slate_v3),
         "slate_savant": str(slate_savant),
@@ -355,7 +379,7 @@ def main() -> None:
             "all_predictions_parquet": str(all_pred_parquet),
             "summary": str(summary_path),
         },
-        "note": "Production blend: 80% v3 + 20% Savant-light challenger.",
+        "note": "Production v4.1 gated blend: base 80% v3 + 20% Savant-light; v3 top-5 uses 90% v3 + 10% Savant.",
     }
 
     summary_path.write_text(json.dumps(summary, indent=2, default=str))
