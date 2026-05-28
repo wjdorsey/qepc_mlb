@@ -345,6 +345,43 @@ def main() -> None:
 
     out_csv = out_dir / f"batter_1plus_hit_blend_eval_top{args.top_n}_{date_tag}.csv"
     out_json = out_dir / f"batter_1plus_hit_blend_eval_summary_{date_tag}.json"
+    history_csv = out_dir / "evaluation_history.csv"
+
+    # Append/update one daily summary row in the cumulative evaluation ledger.
+    history_row = {
+        "date": args.date,
+        "safety_version": SAFETY_VERSION,
+        "predictions": str(pred_path),
+        "actuals": args.actuals,
+        "score_col": score_col,
+        "merge_keys": "|".join(keys),
+        "rows_predicted": int(len(preds)),
+        "rows_after_merge": int(len(merged)),
+        "missing_actuals": int(missing_actuals),
+        "top_n": int(args.top_n),
+    }
+
+    for metric_key, metric_value in summary.items():
+        if metric_key.startswith("top") and (
+            metric_key.endswith("_rows")
+            or metric_key.endswith("_hit_count")
+            or metric_key.endswith("_hit_rate")
+        ):
+            history_row[metric_key] = metric_value
+
+    if history_csv.exists():
+        hist = pd.read_csv(history_csv)
+        hist = hist[hist["date"].astype(str).ne(str(args.date))].copy()
+        hist = pd.concat([hist, pd.DataFrame([history_row])], ignore_index=True)
+    else:
+        hist = pd.DataFrame([history_row])
+
+    hist["date"] = pd.to_datetime(hist["date"], errors="coerce")
+    hist = hist.sort_values("date").copy()
+    hist["date"] = hist["date"].dt.strftime("%Y-%m-%d")
+    hist.to_csv(history_csv, index=False)
+
+    summary["evaluation_history"] = str(history_csv)
 
     display_cols = [
         "eval_rank",
@@ -366,6 +403,7 @@ def main() -> None:
     out_json.write_text(json.dumps(summary, indent=2, default=str))
 
     print(json.dumps(summary, indent=2, default=str))
+    print(f"\nUpdated evaluation history: {history_csv}")
     print("\nTop board result preview:")
     print(top_board[display_cols].to_string(index=False))
 

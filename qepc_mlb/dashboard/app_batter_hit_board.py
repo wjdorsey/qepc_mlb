@@ -287,8 +287,8 @@ def main() -> None:
 
     summary = load_json(summary_path)
 
-    tab_board, tab_explorer, tab_results, tab_model, tab_files = st.tabs(
-        ["Daily Board", "Player Explorer", "Results Checker", "Model Signals", "Files / Status"]
+    tab_board, tab_explorer, tab_results, tab_history, tab_model, tab_files = st.tabs(
+        ["Daily Board", "Player Explorer", "Results Checker", "History", "Model Signals", "Files / Status"]
     )
 
     with tab_board:
@@ -476,6 +476,96 @@ def main() -> None:
                     st.bar_chart(result_counts, x="result", y="count")
         else:
             st.info("No evaluation summary found for this date yet. Click Evaluate selected date.")
+
+    with tab_history:
+        st.subheader("Evaluation History")
+
+        history_path = PROJECT_ROOT / "artifacts/mlb/evaluation/batter_1plus_hit_blend/evaluation_history.csv"
+        history = read_table(history_path)
+
+        if history is None or history.empty:
+            st.info("No evaluation history found yet. Run the Results Checker for at least one date.")
+        else:
+            h = history.copy()
+            h["date"] = pd.to_datetime(h["date"], errors="coerce")
+            h = h.sort_values("date").copy()
+
+            for c in ["top5_hit_rate", "top10_hit_rate", "top25_hit_rate", "top50_hit_rate"]:
+                if c in h.columns:
+                    h[c] = pd.to_numeric(h[c], errors="coerce")
+
+            latest = h.dropna(subset=["date"]).tail(1)
+
+            c1, c2, c3, c4 = st.columns(4)
+
+            if not latest.empty:
+                row = latest.iloc[0]
+                c1.metric("Latest date", row["date"].strftime("%Y-%m-%d"))
+                c2.metric("Latest Top 5", f"{row.get('top5_hit_rate', 0) * 100:.1f}%")
+                c3.metric("Latest Top 10", f"{row.get('top10_hit_rate', 0) * 100:.1f}%")
+                c4.metric("Latest Top 25", f"{row.get('top25_hit_rate', 0) * 100:.1f}%")
+
+            st.divider()
+
+            st.subheader("Cumulative Performance")
+
+            c1, c2, c3, c4 = st.columns(4)
+
+            def weighted_rate(df, hit_col, row_col):
+                if hit_col not in df.columns or row_col not in df.columns:
+                    return None
+                hits = pd.to_numeric(df[hit_col], errors="coerce").sum()
+                rows = pd.to_numeric(df[row_col], errors="coerce").sum()
+                if rows == 0:
+                    return None
+                return hits / rows
+
+            top5_cum = weighted_rate(h, "top5_hit_count", "top5_rows")
+            top10_cum = weighted_rate(h, "top10_hit_count", "top10_rows")
+            top25_cum = weighted_rate(h, "top25_hit_count", "top25_rows")
+            top50_cum = weighted_rate(h, "top50_hit_count", "top50_rows")
+
+            c1.metric("Cumulative Top 5", f"{top5_cum * 100:.1f}%" if top5_cum is not None else "—")
+            c2.metric("Cumulative Top 10", f"{top10_cum * 100:.1f}%" if top10_cum is not None else "—")
+            c3.metric("Cumulative Top 25", f"{top25_cum * 100:.1f}%" if top25_cum is not None else "—")
+            c4.metric("Days tracked", f"{len(h)}")
+
+            st.divider()
+
+            st.subheader("Rolling Trends")
+
+            trend_cols = ["date"]
+            for c in ["top5_hit_rate", "top10_hit_rate", "top25_hit_rate", "top50_hit_rate"]:
+                if c in h.columns:
+                    trend_cols.append(c)
+
+            trend = h[trend_cols].dropna(subset=["date"]).copy()
+            if len(trend) > 0:
+                trend = trend.set_index("date")
+                st.line_chart(trend)
+
+            st.subheader("Rolling 7-Day Averages")
+
+            roll = h[["date"]].copy()
+            for c in ["top5_hit_rate", "top10_hit_rate", "top25_hit_rate", "top50_hit_rate"]:
+                if c in h.columns:
+                    roll[c.replace("_hit_rate", "_roll7")] = h[c].rolling(7, min_periods=1).mean()
+
+            if len(roll) > 0:
+                roll = roll.set_index("date")
+                st.line_chart(roll)
+
+            st.subheader("Daily Ledger")
+            display = h.copy()
+            display["date"] = display["date"].dt.strftime("%Y-%m-%d")
+            st.dataframe(display, use_container_width=True, hide_index=True)
+
+            st.download_button(
+                "Download evaluation history CSV",
+                data=display.to_csv(index=False),
+                file_name="qepc_mlb_hit_board_evaluation_history.csv",
+                mime="text/csv",
+            )
 
     with tab_model:
         st.subheader("Model Signals")
