@@ -101,6 +101,26 @@ def run_daily_pipeline(score_date: str, top_n: int, skip_fetch: bool) -> tuple[i
     return proc.returncode, proc.stdout, proc.stderr
 
 
+def run_evaluation(score_date: str, top_n: int) -> tuple[int, str, str]:
+    cmd = [
+        sys.executable,
+        "qepc_mlb/evaluation/evaluate_daily_hit_board.py",
+        "--date",
+        score_date,
+        "--top_n",
+        str(top_n),
+    ]
+
+    proc = subprocess.run(
+        cmd,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    return proc.returncode, proc.stdout, proc.stderr
+
+
 def probability_cols(df: pd.DataFrame) -> list[str]:
     candidates = [
         "pred_prob_pct",
@@ -243,8 +263,8 @@ def main() -> None:
 
     summary = load_json(summary_path)
 
-    tab_board, tab_explorer, tab_model, tab_files = st.tabs(
-        ["Daily Board", "Player Explorer", "Model Signals", "Files / Status"]
+    tab_board, tab_explorer, tab_results, tab_model, tab_files = st.tabs(
+        ["Daily Board", "Player Explorer", "Results Checker", "Model Signals", "Files / Status"]
     )
 
     with tab_board:
@@ -331,6 +351,80 @@ def main() -> None:
                     if cols:
                         st.write("Signal values")
                         st.dataframe(p[cols], use_container_width=True, hide_index=True)
+
+    with tab_results:
+        st.subheader("Results Checker")
+
+        st.caption("Evaluate a saved daily board against actual batter results from local processed batter logs.")
+
+        eval_date_tag = date_tag_from_iso(score_date)
+        eval_dir = PROJECT_ROOT / "artifacts/mlb/evaluation/batter_1plus_hit_blend"
+        eval_summary_path = eval_dir / f"batter_1plus_hit_blend_eval_summary_{eval_date_tag}.json"
+        eval_csv_path = eval_dir / f"batter_1plus_hit_blend_eval_top{int(top_n)}_{eval_date_tag}.csv"
+
+        if st.button("Evaluate selected date"):
+            with st.spinner("Evaluating daily board against actuals..."):
+                code, stdout, stderr = run_evaluation(score_date, int(top_n))
+
+            if code == 0:
+                st.success("Evaluation completed.")
+            else:
+                st.error(f"Evaluation failed with exit code {code}.")
+
+            with st.expander("Evaluation stdout", expanded=False):
+                st.code(stdout or "(empty)")
+
+            if stderr:
+                with st.expander("Evaluation stderr", expanded=True):
+                    st.code(stderr)
+
+        eval_summary = load_json(eval_summary_path)
+        eval_board = read_table(eval_csv_path)
+
+        if eval_summary:
+            c1, c2, c3, c4 = st.columns(4)
+
+            c1.metric(
+                "Top 5",
+                f"{eval_summary.get('top5_hit_rate', 0) * 100:.1f}%",
+                f"{eval_summary.get('top5_hit_count', 0)}/{eval_summary.get('top5_rows', 0)}",
+            )
+            c2.metric(
+                "Top 10",
+                f"{eval_summary.get('top10_hit_rate', 0) * 100:.1f}%",
+                f"{eval_summary.get('top10_hit_count', 0)}/{eval_summary.get('top10_rows', 0)}",
+            )
+            c3.metric(
+                "Top 25",
+                f"{eval_summary.get('top25_hit_rate', 0) * 100:.1f}%",
+                f"{eval_summary.get('top25_hit_count', 0)}/{eval_summary.get('top25_rows', 0)}",
+            )
+            c4.metric(
+                "Missing actuals",
+                f"{eval_summary.get('missing_actuals', '—')}",
+            )
+
+            with st.expander("Evaluation summary JSON", expanded=False):
+                st.json(eval_summary)
+
+            if eval_board is not None:
+                st.subheader("Evaluated Top Board")
+                st.dataframe(eval_board, use_container_width=True, hide_index=True)
+
+                st.download_button(
+                    "Download evaluated board as CSV",
+                    data=eval_board.to_csv(index=False),
+                    file_name=f"qepc_hit_board_results_{score_date}.csv",
+                    mime="text/csv",
+                )
+
+                if "actual_hit_1plus" in eval_board.columns:
+                    st.subheader("Hits vs Misses")
+                    result_counts = eval_board["actual_hit_1plus"].map({1: "Hit", 0: "Miss"}).value_counts().reset_index()
+                    result_counts.columns = ["result", "count"]
+                    st.bar_chart(result_counts, x="result", y="count")
+        else:
+            st.info("No evaluation summary found for this date yet. Click Evaluate selected date.")
 
     with tab_model:
         st.subheader("Model Signals")
