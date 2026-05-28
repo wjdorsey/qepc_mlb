@@ -375,3 +375,6 @@ The next concrete coding step should be:
 
 That gives the project a clean beginning with its own identity and a path to serious walk-forward evaluation.
 
+## Documentation
+
+- [QEPC-MLB User Manual](docs/QEPC_MLB_USER_MANUAL.md)
