@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import unicodedata
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -99,14 +101,37 @@ def add_actual_hit_col(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def normalize_name(x) -> str:
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+    s = unicodedata.normalize("NFKD", s)
+    s = s.encode("ascii", "ignore").decode("ascii")
+    s = s.lower()
+    s = s.replace(".", " ")
+    s = re.sub(r"\b(jr|sr|ii|iii|iv|v)\b", " ", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    s = re.sub(r"\b[a-z]\b", " ", s)  # drop middle initials like Michael A Taylor
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def build_actual_key_table(actuals: pd.DataFrame) -> pd.DataFrame:
     a = normalize_date_col(actuals)
     a = add_actual_hit_col(a)
 
-    if "batter_id" not in a.columns:
-        raise ValueError("Actuals file missing batter_id.")
+    # Local Retrosheet-style files usually have batter_id.
+    # MLB Stats API actuals usually have mlb_batter_id.
+    if "batter_id" not in a.columns and "mlb_batter_id" in a.columns:
+        a["batter_id"] = a["mlb_batter_id"]
 
-    a["batter_id"] = a["batter_id"].astype("string")
+    if "batter_id" in a.columns:
+        a["batter_id"] = a["batter_id"].astype("string")
+
+    if "mlb_batter_id" in a.columns:
+        a["mlb_batter_id"] = a["mlb_batter_id"].astype("string")
+
+    if "batter_name" in a.columns:
+        a["batter_name_key"] = a["batter_name"].map(normalize_name)
 
     for c in ["game_id", "team", "opponent"]:
         if c in a.columns:
@@ -117,23 +142,33 @@ def build_actual_key_table(actuals: pd.DataFrame) -> pd.DataFrame:
             "game_id",
             "game_date",
             "batter_id",
+            "mlb_batter_id",
             "team",
             "opponent",
             "actual_hit_1plus",
             "hits",
             "batter_name",
+            "batter_name_key",
         ]
         if c in a.columns
     ]
 
     a = a[keep].copy()
 
-    # Prefer game_id matching if possible, but keep rows unique.
-    key = ["game_id", "batter_id"] if "game_id" in a.columns else ["game_date", "batter_id", "team", "opponent"]
-    key = [c for c in key if c in a.columns]
+    # Keep broad uniqueness here; the actual merge strategy is chosen later.
+    possible_key_sets = [
+        ["game_id", "batter_id"],
+        ["game_date", "batter_id", "team", "opponent"],
+        ["game_date", "mlb_batter_id", "team", "opponent"],
+        ["game_date", "batter_name_key", "team", "opponent"],
+        ["game_date", "batter_name_key", "team"],
+    ]
 
-    a = a.drop_duplicates(key, keep="first")
-    return a
+    for key in possible_key_sets:
+        if all(c in a.columns for c in key):
+            return a.drop_duplicates(key, keep="first")
+
+    return a.drop_duplicates(keep, keep="first")
 
 
 def evaluate_topk(df: pd.DataFrame, k: int) -> dict:
@@ -172,6 +207,12 @@ def main() -> None:
 
     preds["batter_id"] = preds["batter_id"].astype("string")
 
+    if "mlb_batter_id" in preds.columns:
+        preds["mlb_batter_id"] = preds["mlb_batter_id"].astype("string")
+
+    if "batter_name" in preds.columns:
+        preds["batter_name_key"] = preds["batter_name"].map(normalize_name)
+
     for c in ["game_id", "team", "opponent"]:
         if c in preds.columns:
             preds[c] = preds[c].astype("string")
@@ -191,11 +232,26 @@ def main() -> None:
     if all(c in preds.columns for c in ["game_date", "batter_id", "team", "opponent"]) and all(c in actuals.columns for c in ["game_date", "batter_id", "team", "opponent"]):
         candidate_keys.append(["game_date", "batter_id", "team", "opponent"])
 
+    if all(c in preds.columns for c in ["game_date", "mlb_batter_id", "team", "opponent"]) and all(c in actuals.columns for c in ["game_date", "mlb_batter_id", "team", "opponent"]):
+        candidate_keys.append(["game_date", "mlb_batter_id", "team", "opponent"])
+
+    if all(c in preds.columns for c in ["game_date", "batter_name_key", "team", "opponent"]) and all(c in actuals.columns for c in ["game_date", "batter_name_key", "team", "opponent"]):
+        candidate_keys.append(["game_date", "batter_name_key", "team", "opponent"])
+
     if all(c in preds.columns for c in ["game_date", "batter_id", "team"]) and all(c in actuals.columns for c in ["game_date", "batter_id", "team"]):
         candidate_keys.append(["game_date", "batter_id", "team"])
 
+    if all(c in preds.columns for c in ["game_date", "mlb_batter_id", "team"]) and all(c in actuals.columns for c in ["game_date", "mlb_batter_id", "team"]):
+        candidate_keys.append(["game_date", "mlb_batter_id", "team"])
+
+    if all(c in preds.columns for c in ["game_date", "batter_name_key", "team"]) and all(c in actuals.columns for c in ["game_date", "batter_name_key", "team"]):
+        candidate_keys.append(["game_date", "batter_name_key", "team"])
+
     if all(c in preds.columns for c in ["game_date", "batter_id"]) and all(c in actuals.columns for c in ["game_date", "batter_id"]):
         candidate_keys.append(["game_date", "batter_id"])
+
+    if all(c in preds.columns for c in ["game_date", "mlb_batter_id"]) and all(c in actuals.columns for c in ["game_date", "mlb_batter_id"]):
+        candidate_keys.append(["game_date", "mlb_batter_id"])
 
     if not candidate_keys:
         raise ValueError("No usable merge keys found between predictions and actuals.")
@@ -246,6 +302,26 @@ def main() -> None:
     ranked = merged.sort_values(score_col, ascending=False).copy()
     ranked["eval_rank"] = range(1, len(ranked) + 1)
 
+    # Save missing actuals for debugging API/name/id mismatches.
+    missing_debug = ranked[ranked["actual_hit_1plus"].isna()].copy()
+    missing_debug_path = out_dir / f"missing_actuals_debug_{date_tag}.csv"
+    if len(missing_debug):
+        debug_cols = [
+            "eval_rank",
+            "game_date",
+            "game_id",
+            "batter_id",
+            "mlb_batter_id",
+            "batter_name",
+            "batter_name_key",
+            "team",
+            "opponent",
+            "lineup_slot",
+            score_col,
+        ]
+        debug_cols = [c for c in debug_cols if c in missing_debug.columns]
+        missing_debug[debug_cols].to_csv(missing_debug_path, index=False)
+
     top_board = ranked.head(args.top_n).copy()
 
     summary = {
@@ -259,6 +335,7 @@ def main() -> None:
         "rows_predicted": int(len(preds)),
         "rows_after_merge": int(len(merged)),
         "missing_actuals": missing_actuals,
+        "missing_actuals_debug": str(missing_debug_path) if missing_actuals else None,
         "top_n": args.top_n,
     }
 

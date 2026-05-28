@@ -101,7 +101,7 @@ def run_daily_pipeline(score_date: str, top_n: int, skip_fetch: bool) -> tuple[i
     return proc.returncode, proc.stdout, proc.stderr
 
 
-def run_evaluation(score_date: str, top_n: int) -> tuple[int, str, str]:
+def run_evaluation(score_date: str, top_n: int, actuals_path: Optional[Path] = None) -> tuple[int, str, str]:
     cmd = [
         sys.executable,
         "qepc_mlb/evaluation/evaluate_daily_hit_board.py",
@@ -111,6 +111,9 @@ def run_evaluation(score_date: str, top_n: int) -> tuple[int, str, str]:
         str(top_n),
     ]
 
+    if actuals_path is not None:
+        cmd.extend(["--actuals", str(actuals_path)])
+
     proc = subprocess.run(
         cmd,
         cwd=PROJECT_ROOT,
@@ -119,6 +122,27 @@ def run_evaluation(score_date: str, top_n: int) -> tuple[int, str, str]:
     )
 
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def fetch_api_actuals(score_date: str) -> tuple[int, str, str, Path]:
+    date_tag = date_tag_from_iso(score_date)
+    actuals_path = PROJECT_ROOT / "cache/mlb/results" / f"mlb_batter_actuals_{date_tag}.parquet"
+
+    cmd = [
+        sys.executable,
+        "qepc_mlb/ingest/fetch_mlb_batter_actuals.py",
+        "--date",
+        score_date,
+    ]
+
+    proc = subprocess.run(
+        cmd,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    return proc.returncode, proc.stdout, proc.stderr, actuals_path
 
 
 def probability_cols(df: pd.DataFrame) -> list[str]:
@@ -362,9 +386,36 @@ def main() -> None:
         eval_summary_path = eval_dir / f"batter_1plus_hit_blend_eval_summary_{eval_date_tag}.json"
         eval_csv_path = eval_dir / f"batter_1plus_hit_blend_eval_top{int(top_n)}_{eval_date_tag}.csv"
 
+        use_api_actuals = st.checkbox(
+            "Use MLB API actuals",
+            value=True,
+            help="Fetch official MLB boxscore actuals for the selected date before evaluating. Falls back to local files only if unchecked.",
+        )
+
         if st.button("Evaluate selected date"):
+            actuals_path = None
+            combined_stdout = ""
+            combined_stderr = ""
+
+            if use_api_actuals:
+                with st.spinner("Fetching MLB API actuals..."):
+                    fetch_code, fetch_stdout, fetch_stderr, fetched_path = fetch_api_actuals(score_date)
+
+                combined_stdout += "\n\n=== Fetch MLB API actuals stdout ===\n" + (fetch_stdout or "(empty)")
+                combined_stderr += "\n\n=== Fetch MLB API actuals stderr ===\n" + (fetch_stderr or "")
+
+                if fetch_code == 0 and fetched_path.exists():
+                    actuals_path = fetched_path
+                    st.success("MLB API actuals fetched.")
+                else:
+                    st.error(f"Fetching MLB API actuals failed with exit code {fetch_code}.")
+                    actuals_path = None
+
             with st.spinner("Evaluating daily board against actuals..."):
-                code, stdout, stderr = run_evaluation(score_date, int(top_n))
+                code, stdout, stderr = run_evaluation(score_date, int(top_n), actuals_path=actuals_path)
+
+            combined_stdout += "\n\n=== Evaluation stdout ===\n" + (stdout or "(empty)")
+            combined_stderr += "\n\n=== Evaluation stderr ===\n" + (stderr or "")
 
             if code == 0:
                 st.success("Evaluation completed.")
@@ -372,11 +423,11 @@ def main() -> None:
                 st.error(f"Evaluation failed with exit code {code}.")
 
             with st.expander("Evaluation stdout", expanded=False):
-                st.code(stdout or "(empty)")
+                st.code(combined_stdout or "(empty)")
 
-            if stderr:
+            if combined_stderr.strip():
                 with st.expander("Evaluation stderr", expanded=True):
-                    st.code(stderr)
+                    st.code(combined_stderr)
 
         eval_summary = load_json(eval_summary_path)
         eval_board = read_table(eval_csv_path)
